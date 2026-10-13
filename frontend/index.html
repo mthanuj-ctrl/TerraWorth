@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8" />
@@ -24,12 +24,62 @@
             <div id="searchFeedback" class="feedback"></div>
         </section>
         <section class="dashboard-grid">
-            <article class="card" id="metricsCard"><h2>Real Estate Metrics</h2><div id="metricsContent" class="card-content"><p class="placeholder">Enter a locality to view live price per square foot and historical trends.</p></div></article>
-            <article class="card" id="forecastCard"><h2>Predictive Horizon Engine</h2><div id="forecastContent" class="card-content"><p class="placeholder">Forecast projections for 6 months, 2 years, and 5 years will appear here.</p></div></article>
-            <article class="card" id="chartsCard"><h2>Statistical Analysis & Comparisons</h2><div id="chartsContent" class="card-content"><p class="placeholder">Bar charts, histograms, and locality comparisons will appear here.</p></div></article>
-            <article class="card" id="aiCard"><h2>AI Investment Assistant</h2><div id="aiContent" class="card-content"><div id="aiChatLog" class="chat-log"></div><div class="chat-input-row"><input type="text" id="aiQueryInput" placeholder="Ask about this plot or locality..." /><button id="aiSendBtn">Ask AI</button></div><p class="ai-note">Powered by Google Gemini. Free tier, no credit card required.</p></div></article>
-            <article class="card" id="recommendationsCard"><h2>Alternative Smart Recommendations</h2><div id="recommendationsContent" class="card-content"><p class="placeholder">Nearby localities with superior price-to-value ratios will be listed here.</p></div></article>
-            <article class="card map-card" id="mapCard"><h2>Interactive Spatial Map</h2><div id="map"></div><div id="mapLegend" class="map-legend"><span class="legend-item budget">Budget</span><span class="legend-item mid">Mid-Tier</span><span class="legend-item luxury">Luxury</span></div></article>
+            <article class="card" id="metricsCard">
+                <h2>Real Estate Metrics</h2>
+                <div id="metricsContent" class="card-content">
+                    <p class="placeholder">Enter a locality to view live price per square foot and historical trends.</p>
+                </div>
+            </article>
+            <article class="card" id="forecastCard">
+                <h2>Predictive Horizon Engine</h2>
+                <div id="forecastContent" class="card-content">
+                    <p class="placeholder">Forecast projections for 6 months, 2 years, and 5 years will appear here.</p>
+                </div>
+            </article>
+            <article class="card" id="evaluationCard">
+                <h2>Model Evaluation Metrics</h2>
+                <div id="evaluationContent" class="card-content">
+                    <p class="placeholder">R squared, RMSE, MAE, and MAPE will appear here after a search.</p>
+                </div>
+            </article>
+            <article class="card" id="tierPieCard">
+                <h2>Affordability Tier Distribution</h2>
+                <div id="tierPieContent" class="card-content">
+                    <p class="placeholder">Pie chart of Budget, Mid-Tier, and Luxury properties will appear here.</p>
+                </div>
+            </article>
+            <article class="card" id="chartsCard">
+                <h2>Statistical Analysis & Comparisons</h2>
+                <div id="chartsContent" class="card-content">
+                    <p class="placeholder">Bar charts, histograms, and locality comparisons will appear here.</p>
+                </div>
+            </article>
+            <article class="card" id="aiCard">
+                <h2>AI Investment Assistant</h2>
+                <div id="aiContent" class="card-content">
+                    <div id="aiChatLog" class="chat-log"></div>
+                    <div class="chat-input-row">
+                        <input type="text" id="aiQueryInput" placeholder="Ask about this plot or locality..." />
+                        <button id="aiSendBtn">Ask AI</button>
+                    </div>
+                    <p class="ai-note">Powered by Google Gemini. Free tier, no credit card required.</p>
+                </div>
+            </article>
+            <article class="card" id="recommendationsCard">
+                <h2>Alternative Smart Recommendations</h2>
+                <div id="recommendationsContent" class="card-content">
+                    <p class="placeholder">Nearby localities with superior price-to-value ratios will be listed here.</p>
+                </div>
+            </article>
+            <article class="card map-card" id="mapCard">
+                <h2>Interactive Spatial Map</h2>
+                <div id="map"></div>
+                <div id="mapLegend" class="map-legend">
+                    <span class="legend-item budget">Budget</span>
+                    <span class="legend-item mid">Mid-Tier</span>
+                    <span class="legend-item luxury">Luxury</span>
+                </div>
+            </article>
         </section>
     </main>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>

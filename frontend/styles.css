@@ -69,3 +69,5 @@ body { background-color: var(--bg-parchment); color: var(--text-primary); font-f
     .search-controls button { width: 100%; }
     .dashboard-grid { grid-template-columns: 1fr; }
 }
+
+.metrics-note { font-size: 0.82rem; color: var(--text-secondary); margin-top: 0.6rem; line-height: 1.4; opacity: 0.8; }
