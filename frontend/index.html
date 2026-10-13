@@ -17,7 +17,7 @@
     <main class="app-main">
         <section class="search-section">
             <div class="search-controls">
-                <input type="text" id="localityInput" placeholder="e.g., Whitefield Bangalore, Koramangala, Gachibowli" />
+                <input type="text" id="localityInput" placeholder="e.g., Whitefield Bangalore, Vellore, Koramangala" />
                 <button id="searchBtn">Search Locality</button>
                 <button id="detectLocationBtn">Use My Location</button>
             </div>
@@ -62,7 +62,6 @@
                         <input type="text" id="aiQueryInput" placeholder="Ask about this plot or locality..." />
                         <button id="aiSendBtn">Ask AI</button>
                     </div>
-                    <p class="ai-note">Powered by Google Gemini. Free tier, no credit card required.</p>
                 </div>
             </article>
             <article class="card" id="recommendationsCard">
@@ -78,6 +77,12 @@
                     <span class="legend-item budget">Budget</span>
                     <span class="legend-item mid">Mid-Tier</span>
                     <span class="legend-item luxury">Luxury</span>
+                </div>
+            </article>
+            <article class="card" id="methodologyCard">
+                <h2>Methodology & Code</h2>
+                <div id="methodologyContent" class="card-content">
+                    <p class="placeholder">Calculation details will appear here after a search.</p>
                 </div>
             </article>
         </section>

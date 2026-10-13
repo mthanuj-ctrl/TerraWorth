@@ -7,16 +7,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 
+# =========================================================================
+# GEMINI API KEY - SET THIS IN RENDER DASHBOARD > ENVIRONMENT
+# Get a free key at https://aistudio.google.com/apikey
+# No credit card required. Free tier: 5 RPM / 250K TPM / 1500 RPD.
+# =========================================================================
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 
-# FIX 1: gemini-2.0-flash was retired on June 1, 2026.
-# Use gemini-2.5-flash-lite (free tier, highest RPM) or gemini-2.5-flash.
-GEMINI_MODEL = "gemini-2.5-flash-lite"
-GEMINI_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+# Gemini 3.8 Flash is the current free-tier model (released Sep 2, 2026).
+GEMINI_MODEL = "gemini-3.8-flash"
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org"
 OVERPASS_URL = "https://overpass-api.de/api/interpreter"
-# FIX 2: Nominatim requires a descriptive User-Agent.
 USER_AGENT = "TerraWorth/1.0 (housing-affordability-suite; contact: local-dev)"
 
 app = FastAPI(title="TerraWorth API")
@@ -30,29 +32,32 @@ app.add_middleware(
 
 http_client = httpx.AsyncClient(
     headers={"User-Agent": USER_AGENT, "Accept-Language": "en"},
-    timeout=25.0,
+    timeout=30.0,
     follow_redirects=True,
 )
 
-CITY_BBOX = {
-    "Bangalore": (12.83, 77.46, 13.14, 77.75),
-    "Mumbai": (18.89, 72.77, 19.27, 72.99),
-    "Delhi": (28.40, 76.84, 28.88, 77.35),
-    "Hyderabad": (17.20, 78.30, 17.55, 78.62),
-    "Chennai": (12.90, 80.14, 13.22, 80.31),
-    "Pune": (18.42, 73.75, 18.62, 73.95),
-    "Kolkata": (22.43, 88.25, 22.70, 88.44),
-    "Ahmedabad": (22.93, 72.49, 23.10, 72.66),
-    "Jaipur": (26.79, 75.68, 27.03, 75.90),
-    "Kochi": (9.89, 76.21, 10.03, 76.35),
+# =========================================================================
+# CITY BASE PRICES - Used only as a fallback anchor.
+# The actual price is derived from a seeded random distribution around this.
+# If the city is not listed, a global average is used.
+# =========================================================================
+CITY_BASE_PRICE = {
+    "bangalore": 9500, "bengaluru": 9500,
+    "mumbai": 22000, "delhi": 14000, "new delhi": 14000,
+    "hyderabad": 8500, "chennai": 9000, "pune": 8800,
+    "kolkata": 7500, "ahmedabad": 6800, "jaipur": 5500,
+    "kochi": 7200, "coimbatore": 5800, "vellore": 5700,
+    "madurai": 5200, "trichy": 4800, "salem": 4600,
+    "visakhapatnam": 6200, "vijayawada": 6000, "mysore": 5500,
+    "mangalore": 5800, "hubli": 4200, "belgaum": 4000,
+    "nashik": 6500, "aurangabad": 5500, "nagpur": 6000,
+    "surat": 6500, "vadodara": 5500, "rajkot": 4800,
+    "lucknow": 5500, "kanpur": 4500, "varanasi": 4800,
+    "patna": 5000, "ranchi": 4500, "bhubaneswar": 5200,
+    "guwahati": 5500, "chandigarh": 8000, "dehradun": 6500,
 }
 
-# FIX 6: City-wise base prices for realistic synthetic modeling.
-CITY_BASE_PRICE = {
-    "Bangalore": 9500, "Mumbai": 22000, "Delhi": 14000, "Hyderabad": 8500,
-    "Chennai": 9000, "Pune": 8800, "Kolkata": 7500, "Ahmedabad": 6800,
-    "Jaipur": 5500, "Kochi": 7200,
-}
+GLOBAL_BASE_PRICE = 6000
 
 
 class AIRequest(BaseModel):
@@ -67,30 +72,28 @@ def _seed(name: str) -> int:
     return h
 
 
-def _detect_city(address: dict) -> Optional[str]:
-    for key in ("city", "town", "village", "state_district", "county"):
-        val = address.get(key)
-        if val:
-            for city in CITY_BBOX:
-                if city.lower() in str(val).lower():
-                    return city
-    return None
-
-
 def _clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
 
+def _get_base_price(city: Optional[str]) -> int:
+    if not city:
+        return GLOBAL_BASE_PRICE
+    key = city.lower().strip()
+    for name, price in CITY_BASE_PRICE.items():
+        if name in key or key in name:
+            return price
+    return GLOBAL_BASE_PRICE
+
+
+# =========================================================================
+# GEOCODING
+# =========================================================================
 async def nominatim_search(q: str, limit: int = 5):
-    """FIX 2: Query with countrycodes=in and a descriptive User-Agent."""
     params = {
-        "q": q,
-        "format": "json",
-        "limit": limit,
-        "addressdetails": 1,
-        "countrycodes": "in",
-        "accept-language": "en",
-        "dedupe": 1,
+        "q": q, "format": "json", "limit": limit,
+        "addressdetails": 1, "countrycodes": "in",
+        "accept-language": "en", "dedupe": 1,
     }
     r = await http_client.get(f"{NOMINATIM_URL}/search", params=params)
     r.raise_for_status()
@@ -104,13 +107,12 @@ async def nominatim_reverse(lat: float, lng: float):
     return r.json()
 
 
-async def overpass_residential(bbox: tuple, limit: int = 80):
-    lat_min, lng_min, lat_max, lng_max = bbox
+async def overpass_residential(lat: float, lng: float, radius_m: int = 3000, limit: int = 80):
     query = f"""
     [out:json][timeout:25];
     (
-      way["building"~"residential|apartments|house|yes"]({lat_min},{lng_min},{lat_max},{lng_max});
-      node["building"~"residential|apartments|house|yes"]({lat_min},{lng_min},{lat_max},{lng_max});
+      way["building"~"residential|apartments|house|yes"](around:{radius_m},{lat},{lng});
+      node["building"~"residential|apartments|house|yes"](around:{radius_m},{lat},{lng});
     );
     out center {limit};
     """
@@ -119,27 +121,25 @@ async def overpass_residential(bbox: tuple, limit: int = 80):
     elements = r.json().get("elements", [])
     out = []
     for el in elements[:limit]:
-        lat = el.get("lat") or (el.get("center") or {}).get("lat")
-        lng = el.get("lon") or (el.get("center") or {}).get("lon")
-        if lat and lng:
+        elat = el.get("lat") or (el.get("center") or {}).get("lat")
+        elng = el.get("lon") or (el.get("center") or {}).get("lon")
+        if elat and elng:
             tags = el.get("tags", {})
             out.append({
-                "lat": float(lat),
-                "lng": float(lng),
+                "lat": float(elat),
+                "lng": float(elng),
                 "name": tags.get("name", "Residential property"),
-                "building": tags.get("building", "residential"),
             })
     return out
 
 
+# =========================================================================
+# EVALUATION METRICS
+# =========================================================================
 def _compute_evaluation_metrics(actual: list, predicted: list) -> dict:
-    """
-    FIX 6: Regression evaluation metrics.
-    R2 (coefficient of determination), RMSE, MAE, MAPE.
-    """
     n = len(actual)
     if n == 0:
-        return {"r2": None, "rmse": None, "mae": None, "mape": None}
+        return {"r2": 0.0, "rmse": 0.0, "mae": 0.0, "mape": 0.0}
     mean_actual = sum(actual) / n
     ss_res = sum((a - p) ** 2 for a, p in zip(actual, predicted))
     ss_tot = sum((a - mean_actual) ** 2 for a in actual)
@@ -156,49 +156,47 @@ def _compute_evaluation_metrics(actual: list, predicted: list) -> dict:
     }
 
 
+# =========================================================================
+# GEMINI AI - Using the new google-genai SDK
+# =========================================================================
 async def call_gemini(question: str, context: str) -> str:
     if not GEMINI_API_KEY:
         return ("GEMINI_API_KEY is not set. "
                 "Add it in Render Dashboard > Environment.")
-    body = {
-        "contents": [{
-            "parts": [{
-                "text": (
-                    "You are a real estate investment analyst for the Indian housing market. "
-                    "Answer concisely and factually. If unsure, say so.\n\n"
-                    f"Context: {context}\n\nQuestion: {question}"
-                )
-            }]
-        }],
-        "generationConfig": {"temperature": 0.4, "maxOutputTokens": 512},
-    }
-    url = GEMINI_ENDPOINT + f"?key={GEMINI_API_KEY}"
     try:
-        r = await http_client.post(url, json=body, timeout=30.0)
-    except httpx.TimeoutException:
-        return "The AI request timed out. Please try a shorter question."
-    if r.status_code == 404:
-        return (f"The AI model '{GEMINI_MODEL}' was not found. "
-                "Check that the model name is correct and available for your API key.")
-    if r.status_code == 429:
-        return "The AI rate limit was reached. Wait a moment and try again."
-    if r.status_code == 403:
-        return ("The Gemini API key was rejected. Verify that it is valid and "
-                "that the Gemini API is enabled in Google AI Studio.")
-    if r.status_code != 200:
-        return f"The AI service returned HTTP {r.status_code}. Please try again."
+        from google import genai
+    except ImportError:
+        return ("The google-genai package is not installed. "
+                "Add google-genai to requirements.txt.")
+
     try:
-        data = r.json()
-        candidates = data.get("candidates", [])
-        if not candidates:
-            return "The AI returned an empty response."
-        parts = candidates[0].get("content", {}).get("parts", [])
-        text = "".join(p.get("text", "") for p in parts).strip()
-        return text or "The AI returned an empty response."
-    except (KeyError, IndexError, ValueError):
-        return "Could not parse the AI response."
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        interaction = client.interactions.create(
+            model=GEMINI_MODEL,
+            input=(
+                "You are a real estate investment analyst for the Indian housing market. "
+                "Answer concisely and factually. If unsure, say so.\n\n"
+                f"Context: {context}\n\nQuestion: {question}"
+            ),
+        )
+        text = interaction.output_text
+        return text.strip() if text else "The AI returned an empty response."
+    except Exception as e:
+        err = str(e)
+        if "404" in err or "not found" in err.lower():
+            return (f"The AI model '{GEMINI_MODEL}' was not found. "
+                    "Check that the model name is correct.")
+        if "429" in err or "rate" in err.lower():
+            return "The AI rate limit was reached. Wait a moment and try again."
+        if "403" in err or "API key" in err:
+            return ("The Gemini API key was rejected. Verify that it is valid "
+                    "and that the Gemini API is enabled.")
+        return f"AI error: {err}"
 
 
+# =========================================================================
+# ENDPOINTS
+# =========================================================================
 @app.get("/")
 async def health():
     return {"status": "ok", "service": "TerraWorth API", "model": GEMINI_MODEL}
@@ -208,7 +206,6 @@ async def health():
 async def search_locality(q: str = Query(..., min_length=2)):
     raw = q.strip()
 
-    # FIX 2: Append ", India" and retry if the first query fails.
     queries_to_try = [raw + ", India", raw]
     results = []
     for query in queries_to_try:
@@ -234,11 +231,14 @@ async def search_locality(q: str = Query(..., min_length=2)):
         or address.get("city_district") or address.get("city")
         or address.get("town") or address.get("village") or raw
     )
-    city = _detect_city(address)
+    city = (
+        address.get("city") or address.get("town")
+        or address.get("state_district") or address.get("county") or ""
+    )
 
-    seed = _seed(canonical + (city or ""))
+    seed = _seed(canonical + city)
     rng = random.Random(seed)
-    base = CITY_BASE_PRICE.get(city, 7000)
+    base = _get_base_price(city or canonical)
     price_per_sqft = round(base * rng.uniform(0.75, 1.35))
 
     yoy = round(_clamp(rng.gauss(6.5, 2.5), -2.0, 15.0), 2)
@@ -251,7 +251,6 @@ async def search_locality(q: str = Query(..., min_length=2)):
         "y5": round(price_per_sqft * ((1 + annual) ** 5)),
     }
 
-    # Historical trend (4 years).
     years = ["2022", "2023", "2024", "2025"]
     hist_prices = [
         round(price_per_sqft * 0.78),
@@ -260,8 +259,6 @@ async def search_locality(q: str = Query(..., min_length=2)):
         price_per_sqft,
     ]
 
-    # FIX 6: Compute evaluation metrics by comparing historical actuals
-    # against a simple linear regression prediction.
     n = len(years)
     x_mean = (n - 1) / 2
     y_mean = sum(hist_prices) / n
@@ -272,13 +269,8 @@ async def search_locality(q: str = Query(..., min_length=2)):
     predicted = [intercept + slope * i for i in range(n)]
     eval_metrics = _compute_evaluation_metrics(hist_prices, predicted)
 
-    # Overpass residential buildings.
-    bbox = CITY_BBOX.get(city)
-    if bbox is None:
-        d = 0.04
-        bbox = (lat - d, lng - d, lat + d, lng + d)
     try:
-        buildings = await overpass_residential(bbox, limit=80)
+        buildings = await overpass_residential(lat, lng, radius_m=3000, limit=80)
     except httpx.HTTPError:
         buildings = []
 
@@ -315,7 +307,6 @@ async def search_locality(q: str = Query(..., min_length=2)):
             "tier": tier,
         })
 
-    # FIX 3: Comparables with fallback so recommendations always populate.
     comparables = []
     try:
         comp_raw = await nominatim_search(city or canonical, limit=10)
@@ -338,21 +329,6 @@ async def search_locality(q: str = Query(..., min_length=2)):
                 })
     except httpx.HTTPError:
         pass
-
-    if len(comparables) < 3:
-        fallback_names = ["Whitefield", "Koramangala", "Indiranagar", "HSR Layout",
-                          "Marathahalli", "Electronic City", "Jayanagar"]
-        for name in fallback_names:
-            if name.lower() in {c["locality"].lower() for c in comparables}:
-                continue
-            cr = random.Random(_seed(name))
-            cp = round(base * cr.uniform(0.65, 1.45))
-            cf = round(cp * ((1 + (cr.gauss(6.5, 2.5) + cr.gauss(5.5, 1.2)) / 100) ** 5))
-            comparables.append({
-                "locality": name,
-                "price_per_sqft": cp,
-                "forecast_5y": cf,
-            })
 
     recommendations = []
     for c in comparables:
