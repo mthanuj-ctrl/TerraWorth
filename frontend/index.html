@@ -8,6 +8,8 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     <link rel="stylesheet" href="styles.css" />
+    <!-- Plotly.js for advanced charts -->
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
 </head>
 <body>
     <header class="app-header">
@@ -26,33 +28,23 @@
         <section class="dashboard-grid">
             <article class="card" id="metricsCard">
                 <h2>Real Estate Metrics</h2>
-                <div id="metricsContent" class="card-content">
-                    <p class="placeholder">Enter a locality to view live price per square foot and historical trends.</p>
-                </div>
+                <div id="metricsContent" class="card-content"><p class="placeholder">Search a locality to view metrics.</p></div>
             </article>
             <article class="card" id="forecastCard">
                 <h2>Predictive Horizon Engine</h2>
-                <div id="forecastContent" class="card-content">
-                    <p class="placeholder">Forecast projections for 6 months, 2 years, and 5 years will appear here.</p>
-                </div>
+                <div id="forecastContent" class="card-content"><p class="placeholder">Forecast will appear here.</p></div>
             </article>
             <article class="card" id="evaluationCard">
                 <h2>Model Evaluation Metrics</h2>
-                <div id="evaluationContent" class="card-content">
-                    <p class="placeholder">R squared, RMSE, MAE, and MAPE will appear here after a search.</p>
-                </div>
+                <div id="evaluationContent" class="card-content"><p class="placeholder">Metrics will appear here.</p></div>
             </article>
             <article class="card" id="tierPieCard">
                 <h2>Affordability Tier Distribution</h2>
-                <div id="tierPieContent" class="card-content">
-                    <p class="placeholder">Pie chart of Budget, Mid-Tier, and Luxury properties will appear here.</p>
-                </div>
+                <div id="tierPieContent" class="card-content"><p class="placeholder">Pie chart will appear here.</p></div>
             </article>
             <article class="card" id="chartsCard">
                 <h2>Statistical Analysis & Comparisons</h2>
-                <div id="chartsContent" class="card-content">
-                    <p class="placeholder">Bar charts, histograms, and locality comparisons will appear here.</p>
-                </div>
+                <div id="chartsContent" class="card-content"><p class="placeholder">Charts will appear here.</p></div>
             </article>
             <article class="card" id="aiCard">
                 <h2>AI Investment Assistant</h2>
@@ -66,9 +58,7 @@
             </article>
             <article class="card" id="recommendationsCard">
                 <h2>Alternative Smart Recommendations</h2>
-                <div id="recommendationsContent" class="card-content">
-                    <p class="placeholder">Nearby localities with superior price-to-value ratios will be listed here.</p>
-                </div>
+                <div id="recommendationsContent" class="card-content"><p class="placeholder">Recommendations will appear here.</p></div>
             </article>
             <article class="card map-card" id="mapCard">
                 <h2>Interactive Spatial Map</h2>
@@ -81,15 +71,12 @@
             </article>
             <article class="card" id="methodologyCard">
                 <h2>Methodology & Code</h2>
-                <div id="methodologyContent" class="card-content">
-                    <p class="placeholder">Calculation details will appear here after a search.</p>
-                </div>
+                <div id="methodologyContent" class="card-content"><p class="placeholder">Methodology will appear after search.</p></div>
             </article>
         </section>
     </main>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
