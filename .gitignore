@@ -1,0 +1,13 @@
+﻿__pycache__/
+*.py[cod]
+venv/
+env/
+.venv/
+.Rhistory
+.RData
+.Rproj.user
+*.Rproj
+node_modules/
+.DS_Store
+.vscode/
+.idea/

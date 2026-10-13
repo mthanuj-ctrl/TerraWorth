@@ -1,0 +1,40 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TerraWorth | Housing Price Prediction & Affordability Clustering</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+    <header class="app-header">
+        <h1>TerraWorth</h1>
+        <p class="subtitle">Real-time housing price prediction and neighborhood affordability clustering for Indian localities.</p>
+    </header>
+    <main class="app-main">
+        <section class="search-section">
+            <div class="search-controls">
+                <input type="text" id="localityInput" placeholder="e.g., Whitefield Bangalore, Koramangala, Gachibowli" />
+                <button id="searchBtn">Search Locality</button>
+                <button id="detectLocationBtn">Use My Location</button>
+            </div>
+            <div id="searchFeedback" class="feedback"></div>
+        </section>
+        <section class="dashboard-grid">
+            <article class="card" id="metricsCard"><h2>Real Estate Metrics</h2><div id="metricsContent" class="card-content"><p class="placeholder">Enter a locality to view live price per square foot and historical trends.</p></div></article>
+            <article class="card" id="forecastCard"><h2>Predictive Horizon Engine</h2><div id="forecastContent" class="card-content"><p class="placeholder">Forecast projections for 6 months, 2 years, and 5 years will appear here.</p></div></article>
+            <article class="card" id="chartsCard"><h2>Statistical Analysis & Comparisons</h2><div id="chartsContent" class="card-content"><p class="placeholder">Bar charts, histograms, and locality comparisons will appear here.</p></div></article>
+            <article class="card" id="aiCard"><h2>AI Investment Assistant</h2><div id="aiContent" class="card-content"><div id="aiChatLog" class="chat-log"></div><div class="chat-input-row"><input type="text" id="aiQueryInput" placeholder="Ask about this plot or locality..." /><button id="aiSendBtn">Ask AI</button></div><p class="ai-note">Powered by Google Gemini. Free tier, no credit card required.</p></div></article>
+            <article class="card" id="recommendationsCard"><h2>Alternative Smart Recommendations</h2><div id="recommendationsContent" class="card-content"><p class="placeholder">Nearby localities with superior price-to-value ratios will be listed here.</p></div></article>
+            <article class="card map-card" id="mapCard"><h2>Interactive Spatial Map</h2><div id="map"></div><div id="mapLegend" class="map-legend"><span class="legend-item budget">Budget</span><span class="legend-item mid">Mid-Tier</span><span class="legend-item luxury">Luxury</span></div></article>
+        </section>
+    </main>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
