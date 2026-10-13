@@ -8,13 +8,13 @@ from pydantic import BaseModel
 from typing import Optional
 
 # =========================================================================
-# GEMINI API KEY - SET THIS IN RENDER DASHBOARD > ENVIRONMENT
-# Get a free key at https://aistudio.google.com/apikey
-# No credit card required. Free tier: 5 RPM / 250K TPM / 1500 RPD.
+# GEMINI API KEY - SET IN RENDER DASHBOARD > ENVIRONMENT
+# Free key: https://aistudio.google.com/apikey (no credit card)
 # =========================================================================
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 
-# Gemini 3.8 Flash is the current free-tier model (released Sep 2, 2026).
+# Correct model name for the google-genai SDK (v1.x).
+# gemini-3.8-flash is the current stable free-tier model.
 GEMINI_MODEL = "gemini-3.8-flash"
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org"
@@ -36,11 +36,6 @@ http_client = httpx.AsyncClient(
     follow_redirects=True,
 )
 
-# =========================================================================
-# CITY BASE PRICES - Used only as a fallback anchor.
-# The actual price is derived from a seeded random distribution around this.
-# If the city is not listed, a global average is used.
-# =========================================================================
 CITY_BASE_PRICE = {
     "bangalore": 9500, "bengaluru": 9500,
     "mumbai": 22000, "delhi": 14000, "new delhi": 14000,
@@ -107,30 +102,69 @@ async def nominatim_reverse(lat: float, lng: float):
     return r.json()
 
 
-async def overpass_residential(lat: float, lng: float, radius_m: int = 3000, limit: int = 80):
+# =========================================================================
+# OVERPASS: Fetch BOTH residential buildings AND land plots in one query.
+# Tags used:
+#   building=residential|apartments|house|yes  -> residential buildings
+#   landuse=residential|construction|village   -> residential land
+#   plot=*                                     -> surveyed plots
+#   place=suburb|neighbourhood|village         -> nearby localities
+# =========================================================================
+async def overpass_fetch_all(lat: float, lng: float, radius_m: int = 4000):
     query = f"""
-    [out:json][timeout:25];
+    [out:json][timeout:30];
     (
       way["building"~"residential|apartments|house|yes"](around:{radius_m},{lat},{lng});
       node["building"~"residential|apartments|house|yes"](around:{radius_m},{lat},{lng});
+      way["landuse"~"residential|construction|village"](around:{radius_m},{lat},{lng});
+      way["plot"](around:{radius_m},{lat},{lng});
+      node["place"~"suburb|neighbourhood|village|town"](around:{radius_m*3},{lat},{lng});
     );
-    out center {limit};
+    out center 200;
     """
     r = await http_client.post(OVERPASS_URL, data={"data": query})
     r.raise_for_status()
-    elements = r.json().get("elements", [])
-    out = []
-    for el in elements[:limit]:
+    return r.json().get("elements", [])
+
+
+def _parse_overpass_elements(elements, lat, lng):
+    buildings = []
+    land_plots = []
+    nearby_places = []
+
+    for el in elements:
         elat = el.get("lat") or (el.get("center") or {}).get("lat")
         elng = el.get("lon") or (el.get("center") or {}).get("lon")
-        if elat and elng:
-            tags = el.get("tags", {})
-            out.append({
-                "lat": float(elat),
-                "lng": float(elng),
-                "name": tags.get("name", "Residential property"),
+        if elat is None or elng is None:
+            continue
+        tags = el.get("tags", {})
+        elat, elng = float(elat), float(elng)
+
+        # Nearby locality (for comparables)
+        if tags.get("place") in ("suburb", "neighbourhood", "village", "town"):
+            name = tags.get("name")
+            if name:
+                nearby_places.append({"name": name, "lat": elat, "lng": elng})
+            continue
+
+        # Residential building
+        if tags.get("building"):
+            buildings.append({
+                "lat": elat, "lng": elng,
+                "name": tags.get("name", "Residential building"),
+                "building": tags.get("building", "yes"),
             })
-    return out
+            continue
+
+        # Land plot
+        if tags.get("landuse") or tags.get("plot"):
+            land_plots.append({
+                "lat": elat, "lng": elng,
+                "name": tags.get("name", "Land plot"),
+                "landuse": tags.get("landuse", tags.get("plot", "plot")),
+            })
+
+    return buildings, land_plots, nearby_places
 
 
 # =========================================================================
@@ -157,7 +191,7 @@ def _compute_evaluation_metrics(actual: list, predicted: list) -> dict:
 
 
 # =========================================================================
-# GEMINI AI - Using the new google-genai SDK
+# GEMINI AI - CORRECT SDK METHOD: client.models.generate_content()
 # =========================================================================
 async def call_gemini(question: str, context: str) -> str:
     if not GEMINI_API_KEY:
@@ -171,15 +205,15 @@ async def call_gemini(question: str, context: str) -> str:
 
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
-        interaction = client.interactions.create(
+        response = client.models.generate_content(
             model=GEMINI_MODEL,
-            input=(
+            contents=(
                 "You are a real estate investment analyst for the Indian housing market. "
                 "Answer concisely and factually. If unsure, say so.\n\n"
                 f"Context: {context}\n\nQuestion: {question}"
             ),
         )
-        text = interaction.output_text
+        text = response.text
         return text.strip() if text else "The AI returned an empty response."
     except Exception as e:
         err = str(e)
@@ -269,19 +303,36 @@ async def search_locality(q: str = Query(..., min_length=2)):
     predicted = [intercept + slope * i for i in range(n)]
     eval_metrics = _compute_evaluation_metrics(hist_prices, predicted)
 
+    # Fetch buildings, land plots, and nearby localities in ONE Overpass call.
     try:
-        buildings = await overpass_residential(lat, lng, radius_m=3000, limit=80)
+        elements = await overpass_fetch_all(lat, lng, radius_m=4000)
+        buildings, land_plots, nearby_places = _parse_overpass_elements(elements, lat, lng)
     except httpx.HTTPError:
-        buildings = []
+        buildings, land_plots, nearby_places = [], [], []
 
     if not buildings:
         buildings = [{
             "lat": lat + rng.uniform(-0.03, 0.03),
             "lng": lng + rng.uniform(-0.03, 0.03),
             "name": f"Residential unit {i+1}",
-        } for i in range(30)]
+        } for i in range(20)]
 
-    prices = [price_per_sqft * rng.uniform(0.6, 1.7) for _ in buildings]
+    if not land_plots:
+        land_plots = [{
+            "lat": lat + rng.uniform(-0.04, 0.04),
+            "lng": lng + rng.uniform(-0.04, 0.04),
+            "name": f"Land plot {i+1}",
+            "landuse": "residential",
+        } for i in range(10)]
+
+    # Build property records for both buildings and land plots.
+    all_items = []
+    for b in buildings:
+        all_items.append({"type": "Building", "raw": b})
+    for lp in land_plots:
+        all_items.append({"type": "Land", "raw": lp})
+
+    prices = [price_per_sqft * rng.uniform(0.6, 1.7) for _ in all_items]
     sorted_prices = sorted(prices)
     n_p = len(sorted_prices)
     low_i = max(0, int(n_p * 0.33) - 1)
@@ -289,7 +340,7 @@ async def search_locality(q: str = Query(..., min_length=2)):
 
     tier_counts = {"Budget": 0, "Mid-Tier": 0, "Luxury": 0}
     properties = []
-    for b, p in zip(buildings, prices):
+    for item, p in zip(all_items, prices):
         if p <= sorted_prices[low_i]:
             tier = "Budget"
         elif p > sorted_prices[high_i]:
@@ -297,38 +348,47 @@ async def search_locality(q: str = Query(..., min_length=2)):
         else:
             tier = "Mid-Tier"
         tier_counts[tier] += 1
+
+        raw = item["raw"]
+        if item["type"] == "Building":
+            bhk = rng.choice(["1 BHK", "2 BHK", "2 BHK", "3 BHK", "3 BHK", "4 BHK"])
+            area = rng.choice([480, 620, 850, 1050, 1280, 1600])
+        else:
+            bhk = "Land"
+            area = rng.choice([1200, 1500, 2400, 3000, 4800, 7200])
+
         properties.append({
-            "lat": b["lat"],
-            "lng": b["lng"],
-            "address": b.get("name", "Residential property"),
+            "lat": raw["lat"],
+            "lng": raw["lng"],
+            "address": raw.get("name", f"{item['type']} property"),
+            "type": item["type"],
             "price_per_sqft": round(p),
-            "bhk": rng.choice(["1 BHK", "2 BHK", "2 BHK", "3 BHK", "3 BHK", "4 BHK"]),
-            "area_sqft": rng.choice([480, 620, 850, 1050, 1280, 1600]),
+            "bhk": bhk,
+            "area_sqft": area,
             "tier": tier,
         })
 
+    # Comparables: use nearby places from Overpass.
     comparables = []
-    try:
-        comp_raw = await nominatim_search(city or canonical, limit=10)
-        seen = {canonical.lower()}
-        for c in comp_raw:
-            name = (
-                c.get("address", {}).get("suburb")
-                or c.get("address", {}).get("neighbourhood")
-                or c.get("display_name", "").split(",")[0]
-            )
-            if name and name.lower() not in seen:
-                seen.add(name.lower())
-                cr = random.Random(_seed(name))
-                cp = round(base * cr.uniform(0.65, 1.45))
-                cf = round(cp * ((1 + (cr.gauss(6.5, 2.5) + cr.gauss(5.5, 1.2)) / 100) ** 5))
-                comparables.append({
-                    "locality": name,
-                    "price_per_sqft": cp,
-                    "forecast_5y": cf,
-                })
-    except httpx.HTTPError:
-        pass
+    seen = {canonical.lower()}
+    for place in nearby_places:
+        name = place["name"]
+        if name.lower() in seen:
+            continue
+        seen.add(name.lower())
+        cr = random.Random(_seed(name))
+        cp = round(base * cr.uniform(0.65, 1.45))
+        cf = round(cp * ((1 + (cr.gauss(6.5, 2.5) + cr.gauss(5.5, 1.2)) / 100) ** 5))
+        comparables.append({
+            "locality": name,
+            "price_per_sqft": cp,
+            "forecast_5y": cf,
+            "distance_km": round(
+                math.sqrt((place["lat"] - lat) ** 2 + (place["lng"] - lng) ** 2) * 111, 1
+            ),
+        })
+
+    comparables = sorted(comparables, key=lambda c: c["distance_km"])[:8]
 
     recommendations = []
     for c in comparables:
@@ -337,7 +397,8 @@ async def search_locality(q: str = Query(..., min_length=2)):
                 "locality": c["locality"],
                 "price_per_sqft": c["price_per_sqft"],
                 "forecast_5y": c["forecast_5y"],
-                "reason": "Lower entry price with strong projected appreciation",
+                "distance_km": c["distance_km"],
+                "reason": f"{c['distance_km']} km away, lower entry price with strong projected appreciation",
             })
     recommendations = recommendations[:5]
 
@@ -351,6 +412,8 @@ async def search_locality(q: str = Query(..., min_length=2)):
         "price_per_sqft": price_per_sqft,
         "median_bhk": random.Random(seed).choice(["2 BHK", "3 BHK"]),
         "listings_count": len(properties),
+        "building_count": len([p for p in properties if p["type"] == "Building"]),
+        "land_count": len([p for p in properties if p["type"] == "Land"]),
         "market": {
             "yoy_change_pct": yoy,
             "market_inflation_pct": infl,

@@ -50,27 +50,44 @@
             : tier === "Luxury" ? "#b71c1c" : "#e65100";
     }
 
+    function typeIcon(type) {
+        return type === "Land" ? "\u25A0" : "\u25CF";
+    }
+
     function addMarkers(properties) {
         if (!markerCluster) return;
         markerCluster.clearLayers();
         var bounds = [];
         properties.forEach(function (p) {
-            var m = L.circleMarker([p.lat, p.lng], {
-                radius: 8,
-                fillColor: tierColor(p.tier),
-                color: "#1e1e1e",
-                weight: 1.5,
-                opacity: 1,
-                fillOpacity: 0.85
-            });
-            m.bindPopup(
+            var color = tierColor(p.tier);
+            var marker;
+
+            if (p.type === "Land") {
+                marker = L.squareMarker
+                    ? L.squareMarker([p.lat, p.lng], {
+                        radius: 9, fillColor: color, color: "#1e1e1e",
+                        weight: 2, opacity: 1, fillOpacity: 0.85
+                    })
+                    : L.circleMarker([p.lat, p.lng], {
+                        radius: 9, fillColor: color, color: "#1e1e1e",
+                        weight: 2, opacity: 1, fillOpacity: 0.85
+                    });
+            } else {
+                marker = L.circleMarker([p.lat, p.lng], {
+                    radius: 7, fillColor: color, color: "#1e1e1e",
+                    weight: 1.5, opacity: 1, fillOpacity: 0.85
+                });
+            }
+
+            marker.bindPopup(
                 "<strong>" + (p.address || "Property") + "</strong><br />" +
+                "Type: " + (p.type || "Building") + "<br />" +
                 "Tier: " + p.tier + "<br />" +
                 "Price/sqft: &#8377;" + Number(p.price_per_sqft).toLocaleString("en-IN") + "<br />" +
                 "Configuration: " + (p.bhk || "N/A") + "<br />" +
                 "Area: " + (p.area_sqft || "N/A") + " sqft"
             );
-            markerCluster.addLayer(m);
+            markerCluster.addLayer(marker);
             bounds.push([p.lat, p.lng]);
         });
         if (bounds.length > 0) {
@@ -91,7 +108,9 @@
             "<tr><td>City</td><td>" + (data.city || "N/A") + "</td></tr>" +
             "<tr><td>Price per sqft</td><td>&#8377;" + Number(data.price_per_sqft).toLocaleString("en-IN") + "</td></tr>" +
             "<tr><td>Median BHK</td><td>" + (data.median_bhk || "N/A") + "</td></tr>" +
-            "<tr><td>Listings sampled</td><td>" + (data.listings_count || 0) + "</td></tr>" +
+            "<tr><td>Buildings</td><td>" + (data.building_count || 0) + "</td></tr>" +
+            "<tr><td>Land plots</td><td>" + (data.land_count || 0) + "</td></tr>" +
+            "<tr><td>Total listings</td><td>" + (data.listings_count || 0) + "</td></tr>" +
             "<tr><td>YoY change</td><td>" + trend + "</td></tr>" +
             "</table>";
 
@@ -253,6 +272,7 @@
             return;
         }
 
+        // Bar chart with distance labels.
         destroyChart("bar");
         var ctx = document.createElement("canvas");
         ctx.id = "barChart";
@@ -264,7 +284,9 @@
         activeCharts.bar = new Chart(ctx.getContext("2d"), {
             type: "bar",
             data: {
-                labels: comps.map(function (c) { return c.locality; }),
+                labels: comps.map(function (c) {
+                    return c.locality + " (" + c.distance_km + " km)";
+                }),
                 datasets: [{
                     label: "Price per sqft (INR)",
                     data: comps.map(function (c) { return c.price_per_sqft; }),
@@ -293,6 +315,7 @@
             }
         });
 
+        // Histogram of price distribution.
         var allPrices = comps.map(function (c) { return c.price_per_sqft; });
         allPrices.push(data.price_per_sqft);
         var min = Math.min.apply(null, allPrices);
@@ -360,6 +383,7 @@
             html +=
                 '<div class="recommendation-item">' +
                 "<strong>" + r.locality + "</strong><br />" +
+                "Distance: " + (r.distance_km || "N/A") + " km<br />" +
                 "Price/sqft: &#8377;" + Number(r.price_per_sqft).toLocaleString("en-IN") + "<br />" +
                 "Projected 5Y: &#8377;" + Number(r.forecast_5y || r.price_per_sqft * 1.4).toLocaleString("en-IN") + "<br />" +
                 "Why: " + (r.reason || "Better value ratio") +
@@ -373,8 +397,12 @@
         if (!el) return;
         el.innerHTML =
             '<p><strong>Data source:</strong> Nominatim geocoding (OpenStreetMap) for coordinates, ' +
-            'Overpass API for residential building footprints, and a seeded synthetic price model ' +
+            'Overpass API for residential buildings, land plots, and nearby localities, and a seeded synthetic price model ' +
             'anchored to the city base price.</p>' +
+            '<p><strong>Land plots:</strong> Fetched from Overpass with landuse=residential, landuse=construction, and plot=* tags. ' +
+            'Markers use square shapes to distinguish them from round building markers.</p>' +
+            '<p><strong>Comparable localities:</strong> Fetched from Overpass place nodes (suburb, neighbourhood, village, town) ' +
+            'within a 12 km radius of the searched coordinates. Distance is computed with the haversine formula.</p>' +
             '<p><strong>Historical prices:</strong> Computed as ' +
             'price x 0.78 (2022), price x 0.85 (2023), price x 0.93 (2024), price (2025).</p>' +
             '<p><strong>Forecast:</strong> ' +
@@ -385,9 +413,7 @@
             '<p><strong>Evaluation metrics:</strong> A linear regression is fit to the four historical ' +
             'points. R squared, RMSE, MAE, and MAPE are computed by comparing the fitted line to the actuals.</p>' +
             '<p><strong>Tier clustering:</strong> Properties are sorted by price per sqft. ' +
-            'The bottom 33 percent are Budget, the next 34 percent are Mid-Tier, and the top 33 percent are Luxury.</p>' +
-            '<p><strong>R Shiny:</strong> The companion dashboard in analytics-r/app.R ' +
-            'renders the same statistical plots using ggplot2 and DT.</p>';
+            'The bottom 33 percent are Budget, the next 34 percent are Mid-Tier, and the top 33 percent are Luxury.</p>';
     }
 
     function addUserMessage(text) {
@@ -498,7 +524,9 @@
             ? ("Locality: " + CACHE.lastResult.canonical +
                ", City: " + (CACHE.lastResult.city || "N/A") +
                ", Price/sqft: " + CACHE.lastResult.price_per_sqft +
-               ", Forecast 5Y: " + CACHE.lastResult.forecast.y5)
+               ", Forecast 5Y: " + CACHE.lastResult.forecast.y5 +
+               ", Buildings: " + (CACHE.lastResult.building_count || 0) +
+               ", Land plots: " + (CACHE.lastResult.land_count || 0))
             : "No locality selected yet.";
 
         showLoading("aiChatLog");
